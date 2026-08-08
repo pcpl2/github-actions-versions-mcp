@@ -163,28 +163,12 @@ checksum:
 snapshot:
   version_template: "{{ incpatch .Version }}-next"
 
+# Release notes come from CHANGELOG.md (extracted by the release workflow), with
+# GitHub's own generated commit list appended. GoReleaser's changelog would be a
+# third, unused source — and `use: github` needs an API token this job has no
+# reason to hold.
 changelog:
-  sort: asc
-  use: github
-  groups:
-    - title: Features
-      regexp: '^.*?feat(\(.+\))??!?:.+$'
-      order: 0
-    - title: Bug fixes
-      regexp: '^.*?fix(\(.+\))??!?:.+$'
-      order: 1
-    - title: Other work
-      order: 999
-  filters:
-    exclude:
-      - "^docs:"
-      - "^test:"
-      - "^chore:"
-      - "^ci:"
-      - "^style:"
-      - "^refactor:"
-      - "Merge pull request"
-      - "Merge branch"
+  disable: true
 
 # GoReleaser only builds here — it never touches GitHub. The release itself is
 # created by softprops/action-gh-release in .github/workflows/release.yml, which
