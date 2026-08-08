@@ -1,0 +1,200 @@
+# GoReleaser configuration — https://goreleaser.com
+#
+# Local sanity check (no publishing, writes to ./dist):
+#   goreleaser check
+#   goreleaser release --snapshot --clean
+#
+# Real releases are cut by .github/workflows/release.yml on a pushed tag.
+version: 2
+
+project_name: gha-mcp
+
+before:
+  hooks:
+    - go mod tidy
+    - go test ./...
+
+builds:
+  - id: gha-mcp
+    main: .
+    binary: gha-mcp
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: default
+    ids:
+      - gha-mcp
+    formats:
+      - tar.gz
+    # Windows users expect a zip they can open without extra tooling.
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+      - LICENSE
+
+# Linux system packages, built with nfpm — no Docker or native tooling needed.
+nfpms:
+  - id: packages
+    ids:
+      - gha-mcp
+    package_name: gha-mcp
+    vendor: pcpl2
+    homepage: https://github.com/pcpl2/github-actions-versions-mcp
+    maintainer: Patryk Ławicki <open-source@pcpl2.ovh>
+    description: |-
+      MCP server that reports the latest released versions of GitHub Actions.
+      Answers whether a pinned action ref (e.g. actions/checkout@v3) is stale.
+    license: BSD-2-Clause
+    section: utils
+    bindir: /usr/bin
+    formats:
+      - deb
+      - rpm
+      - apk
+    contents:
+      - src: LICENSE
+        dst: /usr/share/doc/gha-mcp/LICENSE
+      - src: README.md
+        dst: /usr/share/doc/gha-mcp/README.md
+
+# macOS distribution via a Homebrew cask (the current GoReleaser recommendation
+# for pre-built binaries; `brews`/`homebrew_formulas` are deprecated).
+#
+# Requires a separate public repo github.com/pcpl2/homebrew-tap and a
+# TAP_GITHUB_TOKEN secret with `contents: write` on it. Without that secret the
+# upload is skipped and the release still succeeds.
+homebrew_casks:
+  - name: gha-mcp
+    ids:
+      - default
+    binaries:
+      - gha-mcp
+    homepage: https://github.com/pcpl2/github-actions-versions-mcp
+    description: MCP server that reports the latest released versions of GitHub Actions
+    # `index` (not .Env.X) so an unset variable yields "" instead of a
+    # template error — GoReleaser templates run with missingkey=error.
+    skip_upload: '{{ if index .Env "TAP_GITHUB_TOKEN" }}false{{ else }}true{{ end }}'
+    repository:
+      owner: pcpl2
+      name: homebrew-tap
+      branch: main
+      token: '{{ index .Env "TAP_GITHUB_TOKEN" }}'
+    commit_author:
+      name: goreleaserbot
+      email: open-source@pcpl2.ovh
+    commit_msg_template: "cask: {{ .ProjectName }} {{ .Tag }}"
+    # The binaries are not Apple-notarized, so macOS would quarantine them.
+    hooks:
+      post:
+        install: |
+          if OS.mac? && system_command("/usr/bin/xattr", args: ["-h"]).exit_status == 0
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/gha-mcp"]
+          end
+
+# Windows distribution via a Scoop bucket. Requires a separate public repo
+# github.com/pcpl2/scoop-bucket and the same TAP_GITHUB_TOKEN secret.
+scoops:
+  - name: gha-mcp
+    ids:
+      - default
+    homepage: https://github.com/pcpl2/github-actions-versions-mcp
+    description: MCP server that reports the latest released versions of GitHub Actions
+    license: BSD-2-Clause
+    skip_upload: '{{ if index .Env "TAP_GITHUB_TOKEN" }}false{{ else }}true{{ end }}'
+    repository:
+      owner: pcpl2
+      name: scoop-bucket
+      branch: main
+      token: '{{ index .Env "TAP_GITHUB_TOKEN" }}'
+    commit_author:
+      name: goreleaserbot
+      email: open-source@pcpl2.ovh
+    commit_msg_template: "scoop: {{ .ProjectName }} {{ .Tag }}"
+
+# Software Bill of Materials per archive, generated with syft.
+sboms:
+  - id: archives
+    artifacts: archive
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  use: github
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\(.+\))??!?:.+$'
+      order: 0
+    - title: Bug fixes
+      regexp: '^.*?fix(\(.+\))??!?:.+$'
+      order: 1
+    - title: Other work
+      order: 999
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "^ci:"
+      - "^style:"
+      - "^refactor:"
+      - "Merge pull request"
+      - "Merge branch"
+
+release:
+  github:
+    owner: pcpl2
+    name: github-actions-versions-mcp
+  draft: false
+  prerelease: auto
+  name_template: "{{ .ProjectName }} {{ .Version }}"
+  footer: |
+    ## Install
+
+    **macOS / Linux (Homebrew)**
+    ```bash
+    brew install pcpl2/tap/gha-mcp
+    ```
+
+    **Windows (Scoop)**
+    ```powershell
+    scoop bucket add pcpl2 https://github.com/pcpl2/scoop-bucket
+    scoop install gha-mcp
+    ```
+
+    **Debian / Ubuntu**
+    ```bash
+    sudo dpkg -i gha-mcp_{{ .Version }}_linux_amd64.deb
+    ```
+
+    **Go**
+    ```bash
+    go install github.com/pcpl2/github-actions-versions-mcp@{{ .Tag }}
+    ```
+
+    Verify a download against `checksums.txt`:
+    ```bash
+    sha256sum -c checksums.txt --ignore-missing
+    ```

@@ -1,0 +1,42 @@
+name: Release
+
+# Cut a release by pushing a semver tag:
+#   git tag -a v1.0.0 -m "v1.0.0" && git push origin v1.0.0
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  goreleaser:
+    name: goreleaser
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the GitHub Release and upload artifacts
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # GoReleaser needs the full history and all tags to build a changelog.
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # Provides `syft`, used by the sboms section of .goreleaser.yaml.
+      - uses: anchore/sbom-action/download-syft@v0
+
+      - uses: goreleaser/goreleaser-action@v7
+        with:
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Optional: a PAT with `contents: write` on pcpl2/homebrew-tap and
+          # pcpl2/scoop-bucket. When unset, those two uploads are skipped and
+          # the release still publishes every archive and package.
+          TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
