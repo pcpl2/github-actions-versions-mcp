@@ -1,0 +1,54 @@
+gha-mcp is installed.
+
+WHAT NOW
+
+If you ticked "Configure my AI tools automatically", the server has been
+registered with every supported tool found on this machine (Claude Desktop,
+Claude Code, Cursor, VS Code). Restart the tool to pick it up, then ask it
+something like:
+
+    Is actions/checkout@v3 up to date?
+
+If you ticked "Add gha-mcp to my PATH", open a NEW terminal and run:
+
+    gha-mcp --version
+
+
+CONFIGURING BY HAND
+
+Point your MCP client at the installed binary:
+
+    %LOCALAPPDATA%\Programs\gha-mcp\gha-mcp.exe
+
+For Claude Desktop, add this to claude_desktop_config.json:
+
+    {
+      "mcpServers": {
+        "github-actions": {
+          "command": "C:\\Users\\<you>\\AppData\\Local\\Programs\\gha-mcp\\gha-mcp.exe"
+        }
+      }
+    }
+
+You can re-run the setup at any time from the install folder:
+
+    powershell -ExecutionPolicy Bypass -File configure-ai-clients.ps1
+
+
+RATE LIMITS
+
+Without a token the GitHub API allows 60 requests/hour. A token raises that to
+5000. To use one, re-run the script with it:
+
+    powershell -ExecutionPolicy Bypass -File configure-ai-clients.ps1 -GithubToken ghp_xxx
+
+The token needs no scopes for public repositories.
+
+
+UNINSTALLING
+
+Uninstall from Settings > Apps. That also removes the MCP entries this
+installer added to your AI tools, and takes the install folder back out of PATH.
+
+
+More detail: https://github.com/pcpl2/github-actions-versions-mcp

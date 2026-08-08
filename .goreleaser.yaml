@@ -48,6 +48,11 @@ archives:
     files:
       - README.md
       - LICENSE
+      - CHANGELOG.md
+      # Flattened into the archive root so users can run them straight after
+      # extracting. The Windows installer bundles the .ps1 separately.
+      - src: scripts/configure-ai-clients.*
+        dst: .
 
 # Linux system packages, built with nfpm — no Docker or native tooling needed.
 nfpms:
