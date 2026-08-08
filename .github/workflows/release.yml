@@ -1,15 +1,20 @@
 name: Release
+run-name: Release ${{ inputs.version }}
 
 # Releases are cut by hand, never by pushing a tag:
-#   Actions → Release → Run workflow → version: v1.2.3
+#   Actions → Release → Run workflow → version: 1.2.3
 #
-# The tag is a *result* of this workflow. It is created locally, and pushed to
-# origin only after the build succeeds, so a failed run leaves no tag behind.
+# Give the version without a leading "v" — the workflow adds it when creating
+# the tag, so tags stay SemVer-compatible (v1.2.3).
+#
+# The tag is a *result* of this run. It is created locally for the build, and
+# pushed to origin only once every artifact exists, so a failed run leaves no
+# tag behind.
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version to release, e.g. v1.2.3"
+        description: "Version to release, without the leading v (e.g. 1.2.3)"
         required: true
         type: string
       prerelease:
@@ -33,31 +38,60 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  release:
-    name: build and publish
+  build:
+    name: build artifacts
     runs-on: ubuntu-latest
-    permissions:
-      contents: write # push the tag, create the release
-    env:
-      # Never interpolate ${{ inputs.* }} straight into a run script.
-      VERSION: ${{ inputs.version }}
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
     steps:
       - uses: actions/checkout@v7
         with:
-          # GoReleaser needs full history and tags to build a changelog.
+          # Pin every job to the commit the run started from, and fetch all
+          # history so GoReleaser can build a changelog.
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
-      - name: Validate version
+      - name: Normalise and validate version
+        id: version
+        env:
+          # Never interpolate ${{ inputs.* }} straight into a run script.
+          RAW_VERSION: ${{ inputs.version }}
         run: |
-          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
-            echo "::error::'$VERSION' is not a semver tag such as v1.2.3 or v1.2.3-rc.1"
+          version="${RAW_VERSION#v}"   # tolerate a leading v, then own the prefix
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+            echo "::error::'$RAW_VERSION' is not a SemVer version such as 1.2.3 or 1.2.3-rc.1"
             exit 1
           fi
-          if git rev-parse -q --verify "refs/tags/$VERSION" >/dev/null; then
-            echo "::error::tag $VERSION already exists"
+          tag="v$version"
+          if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+            echo "::error::tag $tag already exists"
             exit 1
           fi
-          echo "Releasing $VERSION from $(git rev-parse --short HEAD)"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "Releasing $tag from $(git rev-parse --short HEAD)"
+
+      # Every change is expected to land in CHANGELOG.md, so a missing entry is
+      # a mistake worth failing on rather than papering over.
+      - name: Extract release notes from CHANGELOG.md
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          awk -v ver="$VERSION" '
+            /^## \[/ {
+              if (found) exit
+              if (index($0, "## [" ver "]") == 1) { found = 1; next }
+            }
+            found { print }
+          ' CHANGELOG.md > release-notes.md
+
+          if [[ ! -s release-notes.md ]] || ! grep -q '[^[:space:]]' release-notes.md; then
+            echo "::error::CHANGELOG.md has no entry for $VERSION. Add a '## [$VERSION] - <date>' section."
+            exit 1
+          fi
+          echo "Release notes:"
+          cat release-notes.md
 
       - uses: actions/setup-go@v7
         with:
@@ -71,12 +105,14 @@ jobs:
       - uses: anchore/sbom-action/download-syft@v0
 
       # GoReleaser derives the version from the tag, so it must exist before the
-      # build. Local only at this point — nothing has been pushed.
+      # build. Local only — nothing is pushed from this job.
       - name: Create tag locally
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -a "$VERSION" -m "$VERSION"
+          git tag -a "$TAG" -m "$TAG"
 
       - name: Build artifacts
         uses: goreleaser/goreleaser-action@v7
@@ -84,29 +120,20 @@ jobs:
           version: "~> v2"
           args: release --clean --skip=publish,announce
 
-      # Fails the run before the tag is pushed if anything the release step
-      # expects is missing — `ls` errors on a glob that matches nothing.
+      # `ls` errors on a glob that matches nothing, so this fails the run before
+      # anything is published.
       - name: Verify artifacts exist
         run: |
           ls -lh dist/*.tar.gz dist/*.zip dist/*.deb dist/*.rpm dist/*.apk \
                  dist/*.sbom.json dist/checksums.txt
+          # Carry the notes alongside the artifacts so every path in the
+          # uploaded artifact is rooted at dist/ and survives the round trip.
+          mv release-notes.md dist/
 
-      - name: Push tag
-        if: ${{ !inputs.dry_run }}
-        run: git push origin "refs/tags/$VERSION"
-
-      - name: Publish GitHub Release
-        if: ${{ !inputs.dry_run }}
-        uses: softprops/action-gh-release@v3.0.2
+      - uses: actions/upload-artifact@v7
         with:
-          tag_name: ${{ inputs.version }}
-          name: gha-mcp ${{ inputs.version }}
-          draft: ${{ inputs.draft }}
-          prerelease: ${{ inputs.prerelease }}
-          generate_release_notes: true
-          fail_on_unmatched_files: true
-          make_latest: ${{ !inputs.prerelease && !inputs.draft }}
-          files: |
+          name: dist
+          path: |
             dist/*.tar.gz
             dist/*.zip
             dist/*.deb
@@ -114,39 +141,148 @@ jobs:
             dist/*.apk
             dist/*.sbom.json
             dist/checksums.txt
-          body: |
-            ## Download
-
-            Pick the file for your system, or see the
-            [install instructions](https://github.com/pcpl2/github-actions-versions-mcp#install).
-
-            | System | File |
-            |--------|------|
-            | Linux (Intel/AMD) | `gha-mcp_<version>_linux_amd64.tar.gz` |
-            | Linux (ARM) | `gha-mcp_<version>_linux_arm64.tar.gz` |
-            | macOS (Apple Silicon) | `gha-mcp_<version>_darwin_arm64.tar.gz` |
-            | macOS (Intel) | `gha-mcp_<version>_darwin_amd64.tar.gz` |
-            | Windows (Intel/AMD) | `gha-mcp_<version>_windows_amd64.zip` |
-            | Windows (ARM) | `gha-mcp_<version>_windows_arm64.zip` |
-
-            Debian/Ubuntu, Fedora/RHEL and Alpine users can install the `.deb`,
-            `.rpm` or `.apk` directly.
-
-            Verify what you downloaded:
-
-            ```bash
-            sha256sum -c checksums.txt --ignore-missing
-            ```
-
-            The binaries are not code-signed. macOS will quarantine them until you
-            run `xattr -dr com.apple.quarantine ./gha-mcp`, and Windows SmartScreen
-            may warn on first run.
-
-      # Without publishing, the artifacts are still worth inspecting.
-      - name: Upload artifacts (dry run)
-        if: ${{ inputs.dry_run }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: dist-${{ inputs.version }}
-          path: dist/
+            dist/release-notes.md
           retention-days: 7
+
+  windows-installer:
+    name: build Windows installer
+    needs: build
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist
+
+      - name: Ensure Inno Setup is available
+        id: iscc
+        shell: pwsh
+        run: |
+          $candidates = @(
+            "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+            "${env:ProgramFiles}\Inno Setup 6\ISCC.exe"
+          )
+          $iscc = (Get-Command ISCC.exe -ErrorAction SilentlyContinue).Source
+          if (-not $iscc) { $iscc = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1 }
+          if (-not $iscc) {
+            Write-Host "Inno Setup not present on this image - installing via Chocolatey"
+            choco install innosetup --no-progress -y
+            $iscc = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          }
+          if (-not $iscc) { throw "Inno Setup compiler (ISCC.exe) not found after install" }
+          Write-Host "Using $iscc"
+          "path=$iscc" >> $env:GITHUB_OUTPUT
+
+      - name: Build installers
+        shell: pwsh
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path installers | Out-Null
+
+          foreach ($arch in @('amd64', 'arm64')) {
+            $zip = "dist/gha-mcp_${env:VERSION}_windows_$arch.zip"
+            if (-not (Test-Path $zip)) { throw "missing archive: $zip" }
+
+            $stage = "stage/$arch"
+            if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
+            New-Item -ItemType Directory -Force -Path $stage | Out-Null
+
+            # The archive already carries gha-mcp.exe, README.md and LICENSE.
+            Expand-Archive -Path $zip -DestinationPath $stage -Force
+            Copy-Item scripts/configure-ai-clients.ps1 $stage/
+            Copy-Item CHANGELOG.md $stage/
+            Copy-Item installer/windows/INSTALL-NOTES.txt $stage/
+
+            Write-Host "::group::Compiling installer for $arch"
+            & "${{ steps.iscc.outputs.path }}" `
+              "/DAppVersion=${env:VERSION}" `
+              "/DArch=$arch" `
+              "/DStageDir=$(Resolve-Path $stage)" `
+              "/DOutputDir=$(Resolve-Path installers)" `
+              installer/windows/gha-mcp.iss
+            if ($LASTEXITCODE -ne 0) { throw "ISCC failed for $arch with exit code $LASTEXITCODE" }
+            Write-Host "::endgroup::"
+          }
+
+          Get-ChildItem installers
+
+      # Checksums for the installers, in the same format as GoReleaser's file.
+      - name: Checksum installers
+        shell: bash
+        run: |
+          cd installers
+          sha256sum *_setup.exe > installers-checksums.txt
+          cat installers-checksums.txt
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: installers
+          path: installers/
+          retention-days: 7
+
+  publish:
+    name: publish release
+    needs: [build, windows-installer]
+    if: ${{ !inputs.dry_run }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # push the tag, create the release
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: installers
+          path: dist
+
+      - name: Merge checksums
+        run: |
+          cat dist/installers-checksums.txt >> dist/checksums.txt
+          rm dist/installers-checksums.txt
+          sort -k2 dist/checksums.txt -o dist/checksums.txt
+          cat dist/checksums.txt
+
+      - name: Push tag
+        env:
+          TAG: ${{ needs.build.outputs.tag }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "$TAG"
+          git push origin "refs/tags/$TAG"
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v3.0.2
+        with:
+          tag_name: ${{ needs.build.outputs.tag }}
+          name: gha-mcp ${{ needs.build.outputs.tag }}
+          draft: ${{ inputs.draft }}
+          prerelease: ${{ inputs.prerelease }}
+          # The changelog entry, with GitHub's generated commit list appended.
+          body_path: dist/release-notes.md
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          make_latest: ${{ !inputs.prerelease && !inputs.draft }}
+          files: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/*_setup.exe
+            dist/*.deb
+            dist/*.rpm
+            dist/*.apk
+            dist/*.sbom.json
+            dist/checksums.txt
