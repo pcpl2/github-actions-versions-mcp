@@ -74,12 +74,15 @@ nfpms:
       - src: README.md
         dst: /usr/share/doc/gha-mcp/README.md
 
-# macOS distribution via a Homebrew cask (the current GoReleaser recommendation
-# for pre-built binaries; `brews`/`homebrew_formulas` are deprecated).
+# macOS/Linux distribution via a Homebrew cask (the current GoReleaser
+# recommendation for pre-built binaries; `brews`/`homebrew_formulas` are
+# deprecated).
 #
-# Requires a separate public repo github.com/pcpl2/homebrew-tap and a
-# TAP_GITHUB_TOKEN secret with `contents: write` on it. Without that secret the
-# upload is skipped and the release still succeeds.
+# DISABLED for now: publishing needs a separate public repo
+# github.com/pcpl2/homebrew-tap plus a PAT with `contents: write` on it. The
+# cask is still generated into ./dist so the config stays exercised. To enable:
+# create the tap repo, add a TAP_GITHUB_TOKEN secret, set skip_upload to false
+# and restore the `token:` line below.
 homebrew_casks:
   - name: gha-mcp
     ids:
@@ -88,14 +91,15 @@ homebrew_casks:
       - gha-mcp
     homepage: https://github.com/pcpl2/github-actions-versions-mcp
     description: MCP server that reports the latest released versions of GitHub Actions
-    # `index` (not .Env.X) so an unset variable yields "" instead of a
-    # template error — GoReleaser templates run with missingkey=error.
-    skip_upload: '{{ if index .Env "TAP_GITHUB_TOKEN" }}false{{ else }}true{{ end }}'
+    skip_upload: true
+    # Required because `release.disable` is set: GoReleaser can no longer infer
+    # the download URL. Points at the assets the release workflow uploads.
+    url:
+      template: https://github.com/pcpl2/github-actions-versions-mcp/releases/download/{{ .Tag }}/{{ .ArtifactName }}
     repository:
       owner: pcpl2
       name: homebrew-tap
       branch: main
-      token: '{{ index .Env "TAP_GITHUB_TOKEN" }}'
     commit_author:
       name: goreleaserbot
       email: open-source@pcpl2.ovh
@@ -108,8 +112,8 @@ homebrew_casks:
             system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/gha-mcp"]
           end
 
-# Windows distribution via a Scoop bucket. Requires a separate public repo
-# github.com/pcpl2/scoop-bucket and the same TAP_GITHUB_TOKEN secret.
+# Windows distribution via a Scoop bucket. DISABLED for the same reason as the
+# Homebrew cask above — it needs github.com/pcpl2/scoop-bucket and a PAT.
 scoops:
   - name: gha-mcp
     ids:
@@ -117,21 +121,24 @@ scoops:
     homepage: https://github.com/pcpl2/github-actions-versions-mcp
     description: MCP server that reports the latest released versions of GitHub Actions
     license: BSD-2-Clause
-    skip_upload: '{{ if index .Env "TAP_GITHUB_TOKEN" }}false{{ else }}true{{ end }}'
+    skip_upload: true
+    url_template: https://github.com/pcpl2/github-actions-versions-mcp/releases/download/{{ .Tag }}/{{ .ArtifactName }}
     repository:
       owner: pcpl2
       name: scoop-bucket
       branch: main
-      token: '{{ index .Env "TAP_GITHUB_TOKEN" }}'
     commit_author:
       name: goreleaserbot
       email: open-source@pcpl2.ovh
     commit_msg_template: "scoop: {{ .ProjectName }} {{ .Tag }}"
 
-# Software Bill of Materials per archive, generated with syft.
+# Software Bill of Materials per archive, generated with syft. The filename is
+# pinned so the release workflow can match it with a `dist/*.sbom.json` glob.
 sboms:
   - id: archives
     artifacts: archive
+    documents:
+      - "${artifact}.sbom.json"
 
 checksum:
   name_template: checksums.txt
@@ -163,38 +170,9 @@ changelog:
       - "Merge pull request"
       - "Merge branch"
 
+# GoReleaser only builds here — it never touches GitHub. The release itself is
+# created by softprops/action-gh-release in .github/workflows/release.yml, which
+# uploads everything from ./dist. That keeps the whole pipeline on the built-in
+# GITHUB_TOKEN, with no extra secrets to configure.
 release:
-  github:
-    owner: pcpl2
-    name: github-actions-versions-mcp
-  draft: false
-  prerelease: auto
-  name_template: "{{ .ProjectName }} {{ .Version }}"
-  footer: |
-    ## Install
-
-    **macOS / Linux (Homebrew)**
-    ```bash
-    brew install pcpl2/tap/gha-mcp
-    ```
-
-    **Windows (Scoop)**
-    ```powershell
-    scoop bucket add pcpl2 https://github.com/pcpl2/scoop-bucket
-    scoop install gha-mcp
-    ```
-
-    **Debian / Ubuntu**
-    ```bash
-    sudo dpkg -i gha-mcp_{{ .Version }}_linux_amd64.deb
-    ```
-
-    **Go**
-    ```bash
-    go install github.com/pcpl2/github-actions-versions-mcp@{{ .Tag }}
-    ```
-
-    Verify a download against `checksums.txt`:
-    ```bash
-    sha256sum -c checksums.txt --ignore-missing
-    ```
+  disable: true

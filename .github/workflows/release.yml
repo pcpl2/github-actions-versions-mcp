@@ -1,42 +1,152 @@
 name: Release
 
-# Cut a release by pushing a semver tag:
-#   git tag -a v1.0.0 -m "v1.0.0" && git push origin v1.0.0
+# Releases are cut by hand, never by pushing a tag:
+#   Actions → Release → Run workflow → version: v1.2.3
+#
+# The tag is a *result* of this workflow. It is created locally, and pushed to
+# origin only after the build succeeds, so a failed run leaves no tag behind.
 on:
-  push:
-    tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release, e.g. v1.2.3"
+        required: true
+        type: string
+      prerelease:
+        description: "Mark the GitHub Release as a pre-release"
+        type: boolean
+        default: false
+      draft:
+        description: "Create the release as a draft (you publish it yourself)"
+        type: boolean
+        default: false
+      dry_run:
+        description: "Build everything, but do not tag or publish"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
-  goreleaser:
-    name: goreleaser
+  release:
+    name: build and publish
     runs-on: ubuntu-latest
     permissions:
-      contents: write # create the GitHub Release and upload artifacts
+      contents: write # push the tag, create the release
+    env:
+      # Never interpolate ${{ inputs.* }} straight into a run script.
+      VERSION: ${{ inputs.version }}
     steps:
       - uses: actions/checkout@v7
         with:
-          # GoReleaser needs the full history and all tags to build a changelog.
+          # GoReleaser needs full history and tags to build a changelog.
           fetch-depth: 0
+
+      - name: Validate version
+        run: |
+          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+            echo "::error::'$VERSION' is not a semver tag such as v1.2.3 or v1.2.3-rc.1"
+            exit 1
+          fi
+          if git rev-parse -q --verify "refs/tags/$VERSION" >/dev/null; then
+            echo "::error::tag $VERSION already exists"
+            exit 1
+          fi
+          echo "Releasing $VERSION from $(git rev-parse --short HEAD)"
 
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
 
+      - name: Run tests
+        run: go test -race ./...
+
       # Provides `syft`, used by the sboms section of .goreleaser.yaml.
       - uses: anchore/sbom-action/download-syft@v0
 
-      - uses: goreleaser/goreleaser-action@v7
+      # GoReleaser derives the version from the tag, so it must exist before the
+      # build. Local only at this point — nothing has been pushed.
+      - name: Create tag locally
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$VERSION" -m "$VERSION"
+
+      - name: Build artifacts
+        uses: goreleaser/goreleaser-action@v7
         with:
           version: "~> v2"
-          args: release --clean
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Optional: a PAT with `contents: write` on pcpl2/homebrew-tap and
-          # pcpl2/scoop-bucket. When unset, those two uploads are skipped and
-          # the release still publishes every archive and package.
-          TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+          args: release --clean --skip=publish,announce
+
+      # Fails the run before the tag is pushed if anything the release step
+      # expects is missing — `ls` errors on a glob that matches nothing.
+      - name: Verify artifacts exist
+        run: |
+          ls -lh dist/*.tar.gz dist/*.zip dist/*.deb dist/*.rpm dist/*.apk \
+                 dist/*.sbom.json dist/checksums.txt
+
+      - name: Push tag
+        if: ${{ !inputs.dry_run }}
+        run: git push origin "refs/tags/$VERSION"
+
+      - name: Publish GitHub Release
+        if: ${{ !inputs.dry_run }}
+        uses: softprops/action-gh-release@v3.0.2
+        with:
+          tag_name: ${{ inputs.version }}
+          name: gha-mcp ${{ inputs.version }}
+          draft: ${{ inputs.draft }}
+          prerelease: ${{ inputs.prerelease }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          make_latest: ${{ !inputs.prerelease && !inputs.draft }}
+          files: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/*.deb
+            dist/*.rpm
+            dist/*.apk
+            dist/*.sbom.json
+            dist/checksums.txt
+          body: |
+            ## Download
+
+            Pick the file for your system, or see the
+            [install instructions](https://github.com/pcpl2/github-actions-versions-mcp#install).
+
+            | System | File |
+            |--------|------|
+            | Linux (Intel/AMD) | `gha-mcp_<version>_linux_amd64.tar.gz` |
+            | Linux (ARM) | `gha-mcp_<version>_linux_arm64.tar.gz` |
+            | macOS (Apple Silicon) | `gha-mcp_<version>_darwin_arm64.tar.gz` |
+            | macOS (Intel) | `gha-mcp_<version>_darwin_amd64.tar.gz` |
+            | Windows (Intel/AMD) | `gha-mcp_<version>_windows_amd64.zip` |
+            | Windows (ARM) | `gha-mcp_<version>_windows_arm64.zip` |
+
+            Debian/Ubuntu, Fedora/RHEL and Alpine users can install the `.deb`,
+            `.rpm` or `.apk` directly.
+
+            Verify what you downloaded:
+
+            ```bash
+            sha256sum -c checksums.txt --ignore-missing
+            ```
+
+            The binaries are not code-signed. macOS will quarantine them until you
+            run `xattr -dr com.apple.quarantine ./gha-mcp`, and Windows SmartScreen
+            may warn on first run.
+
+      # Without publishing, the artifacts are still worth inspecting.
+      - name: Upload artifacts (dry run)
+        if: ${{ inputs.dry_run }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: dist-${{ inputs.version }}
+          path: dist/
+          retention-days: 7

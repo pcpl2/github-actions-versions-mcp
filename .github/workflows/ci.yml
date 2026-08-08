@@ -109,10 +109,8 @@ jobs:
 
       - uses: anchore/sbom-action/download-syft@v0
 
-      # Catches a broken .goreleaser.yaml here, rather than on a pushed tag.
+      # Catches a broken .goreleaser.yaml here, rather than mid-release.
       - uses: goreleaser/goreleaser-action@v7
         with:
           version: "~> v2"
           args: release --snapshot --clean --skip=publish,announce
-        env:
-          TAP_GITHUB_TOKEN: ""
