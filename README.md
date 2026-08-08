@@ -193,8 +193,8 @@ Issues and pull requests are welcome. Please keep the test suite offline, run
 [Conventional Commits](https://www.conventionalcommits.org) (`feat:`, `fix:`, …) —
 release notes are generated from them.
 
-For anything you would rather not discuss in a public issue — including suspected
-security problems — mail <open-source@pcpl2.ovh>.
+Found a security problem? Please do not open a public issue — follow
+[SECURITY.md](SECURITY.md) instead.
 
 ## License
 
