@@ -1,0 +1,18 @@
+# Compiled binaries
+/gha-mcp
+/gha-mcp.exe
+/github-actions-mcp
+/github-actions-mcp.exe
+
+# Go
+*.test
+*.out
+coverage.txt
+
+# GoReleaser build output
+/dist/
+
+# Local editor / agent state
+/.claude/settings.local.json
+/.idea/
+/.vscode/
