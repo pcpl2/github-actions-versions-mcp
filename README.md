@@ -1,3 +1,5 @@
+<img src="assets/icon.png" alt="" width="88" align="right">
+
 # github-actions-versions-mcp
 
 [![CI](https://github.com/pcpl2/github-actions-versions-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/pcpl2/github-actions-versions-mcp/actions/workflows/ci.yml)

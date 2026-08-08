@@ -20,8 +20,17 @@ internal/tools/            MCP tool registration (tools.go) + version logic (ass
 internal/workflow/         regexp-based `uses:` extractor for workflow YAML
 scripts/                   configure-ai-clients.{ps1,sh} — register the server with
                            Claude Desktop/Code, Cursor, VS Code; shipped in archives
-installer/windows/         Inno Setup script + post-install notes for the Windows installer
+                           generate-assets.py — redraws every image in the repo
+installer/windows/         Inno Setup script, wizard images, post-install notes
+assets/                    icon.ico (embedded in the exe, setup icon) and icon.png
+versioninfo.json           Windows VERSIONINFO template; goversioninfo turns it into
+                           resource_windows_*.syso during a release build
 ```
+
+**Images are generated, not hand-drawn.** `scripts/generate-assets.py` (Pillow)
+draws the icon and both wizard images from one arrow definition. The outputs are
+committed so a build never needs Python — change the script and re-run it rather
+than editing a PNG. `*.syso` is gitignored; it only exists mid-build.
 
 Data flow: a tool handler parses input → `internal/workflow` extracts action refs
 (for `check_workflow_actions`) → `internal/github` fetches releases →
