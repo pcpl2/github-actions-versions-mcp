@@ -51,12 +51,14 @@ and download the file matching your system:
 
 | System | Chip | File |
 |--------|------|------|
+| **Windows** | Intel / AMD | **`gha-mcp_<version>_windows_amd64_setup.exe`** ← installer |
+| **Windows** | ARM | **`gha-mcp_<version>_windows_arm64_setup.exe`** ← installer |
+| Windows (no installer) | Intel / AMD | `gha-mcp_<version>_windows_amd64.zip` |
+| Windows (no installer) | ARM | `gha-mcp_<version>_windows_arm64.zip` |
 | Linux | Intel / AMD | `gha-mcp_<version>_linux_amd64.tar.gz` |
 | Linux | ARM (Raspberry Pi, Ampere) | `gha-mcp_<version>_linux_arm64.tar.gz` |
 | macOS | Apple Silicon (M1–M4) | `gha-mcp_<version>_darwin_arm64.tar.gz` |
 | macOS | Intel | `gha-mcp_<version>_darwin_amd64.tar.gz` |
-| Windows | Intel / AMD | `gha-mcp_<version>_windows_amd64.zip` |
-| Windows | ARM | `gha-mcp_<version>_windows_arm64.zip` |
 
 Not sure which chip you have? On macOS run `uname -m` (`arm64` or `x86_64`); on
 Linux run `uname -m` (`aarch64` or `x86_64`); on Windows check
@@ -66,6 +68,22 @@ Debian, Fedora and Alpine users can skip the archive and install a system
 package instead — see [Linux packages](#linux-packages) below.
 
 ## Install
+
+### Windows (installer)
+
+Run `gha-mcp_<version>_windows_<arch>_setup.exe`. It installs per-user, so it
+never asks for administrator rights, and offers two optional steps:
+
+- **Add gha-mcp to my PATH** — so `gha-mcp` works in any terminal.
+- **Configure my AI tools automatically** — registers the server with Claude
+  Desktop, Claude Code, Cursor and VS Code, whichever are installed. Existing MCP
+  servers are left alone, and each config is backed up first.
+
+Uninstalling from Settings → Apps reverses both: the MCP entries are removed and
+the folder comes back out of `PATH`.
+
+The installer is unsigned, so SmartScreen may warn on first run — choose
+**More info → Run anyway**.
 
 ### Linux and macOS
 
@@ -90,7 +108,7 @@ xattr -dr com.apple.quarantine /usr/local/bin/gha-mcp
 No root access? Extract anywhere and use the absolute path in your MCP client
 config — the server never needs to be on your `PATH`.
 
-### Windows
+### Windows (zip)
 
 ```powershell
 # 1. extract into a folder you control
@@ -165,6 +183,32 @@ gha-mcp --version
 
 ## Configure your MCP client
 
+### Automatic setup (recommended)
+
+Every release archive contains a script that registers the server with whichever
+supported tools it finds — **Claude Desktop, Claude Code, Cursor and VS Code**.
+Servers you already have configured are kept, and each file is backed up to
+`*.bak` before it is touched.
+
+```bash
+# Linux / macOS — run it from the extracted archive
+./configure-ai-clients.sh
+
+# with a token, to raise the rate limit
+./configure-ai-clients.sh --token ghp_xxx
+```
+
+```powershell
+# Windows — the installer offers to do this for you; to run it by hand:
+powershell -ExecutionPolicy Bypass -File configure-ai-clients.ps1
+powershell -ExecutionPolicy Bypass -File configure-ai-clients.ps1 -GithubToken ghp_xxx
+```
+
+Restart the tool afterwards. To undo it, pass `--uninstall` (or `-Uninstall` on
+Windows). The Linux/macOS script needs `python3`, which both platforms ship.
+
+Prefer doing it yourself? The per-client instructions below do the same thing.
+
 ### Claude Code
 
 ```bash
@@ -227,46 +271,19 @@ tools, so the suite is fully offline and deterministic.
 
 See [CLAUDE.md](CLAUDE.md) for the architecture notes and project conventions.
 
-## Releasing
+## Changelog
 
-Releases are triggered **manually**, never by pushing a tag:
-
-**Actions → [Release](../../actions/workflows/release.yml) → Run workflow**, then
-fill in the version (`v1.2.3`) and hit the button.
-
-The tag is a *result* of the run, not its trigger:
-[`.github/workflows/release.yml`](.github/workflows/release.yml) validates the
-version, runs the tests, creates the tag locally, builds
-`linux`/`darwin`/`windows` × `amd64`/`arm64` with
-[GoReleaser](https://goreleaser.com), and only then pushes the tag and publishes
-the GitHub Release via `softprops/action-gh-release`. A failed build leaves no
-tag on `origin`.
-
-| Input | Default | Effect |
-|-------|---------|--------|
-| `version` | — | The tag to create, e.g. `v1.2.3`. Rejected if malformed or already taken. |
-| `prerelease` | `false` | Marks the release as a pre-release. |
-| `draft` | `false` | Creates the release as a draft for you to publish by hand. |
-| `dry_run` | `false` | Builds and uploads the artifacts as a workflow artifact, without tagging or releasing. |
-
-Everything runs on the built-in `GITHUB_TOKEN` — no secrets to configure. Publishing
-the Homebrew cask and Scoop manifest is the one thing that would need a personal
-access token, which is why both are disabled in
-[`.goreleaser.yaml`](.goreleaser.yaml).
-
-Validate config changes locally before running the workflow:
-
-```bash
-goreleaser check
-goreleaser release --snapshot --clean --skip=publish,announce
-```
+Every release is documented in [CHANGELOG.md](CHANGELOG.md).
 
 ## Contributing
 
 Issues and pull requests are welcome. Please keep the test suite offline, run
-`golangci-lint run ./...` before opening a PR, and use
-[Conventional Commits](https://www.conventionalcommits.org) (`feat:`, `fix:`, …) —
-release notes are generated from them.
+`golangci-lint run ./...` before opening a PR, use
+[Conventional Commits](https://www.conventionalcommits.org) (`feat:`, `fix:`, …),
+and add an entry to [CHANGELOG.md](CHANGELOG.md) under `## [Unreleased]`.
+
+[CLAUDE.md](CLAUDE.md) documents the architecture, the conventions and how
+releases are cut.
 
 Found a security problem? Please do not open a public issue — follow
 [SECURITY.md](SECURITY.md) instead.

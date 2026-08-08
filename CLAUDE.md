@@ -18,6 +18,9 @@ main.go                    stdio transport wiring, --version flag, ldflags versi
 internal/github/           thin GitHub REST client (releases endpoints only)
 internal/tools/            MCP tool registration (tools.go) + version logic (assess.go)
 internal/workflow/         regexp-based `uses:` extractor for workflow YAML
+scripts/                   configure-ai-clients.{ps1,sh} — register the server with
+                           Claude Desktop/Code, Cursor, VS Code; shipped in archives
+installer/windows/         Inno Setup script + post-install notes for the Windows installer
 ```
 
 Data flow: a tool handler parses input → `internal/workflow` extracts action refs
@@ -80,9 +83,11 @@ so bumping the toolchain means editing `go.mod` only.
   Code" footer.
 - Use [Conventional Commits](https://www.conventionalcommits.org) —
   `feat:`, `fix:`, `docs:`, `test:`, `chore:`, `ci:`, `refactor:`, `style:`.
-  This is not cosmetic: `.goreleaser.yaml` builds release notes by grouping `feat:`
-  and `fix:` commits and excluding the rest. A commit outside these prefixes lands
-  in "Other work".
+- **Every user-visible change gets a CHANGELOG.md entry**, under `## [Unreleased]`
+  while unreleased, in the [Keep a Changelog](https://keepachangelog.com) sections
+  (Added / Changed / Fixed / Removed). This is enforced: the release workflow reads
+  the entry for the version being released and **fails if there is none**. Purely
+  internal churn (refactors, test-only changes) can be left out.
 - Do not commit or push unless asked.
 
 ## Releasing
@@ -91,10 +96,25 @@ so bumping the toolchain means editing `go.mod` only.
 produced *by* the pipeline. A release is started from Actions → Release → Run
 workflow, with the version as an input.
 
-`.github/workflows/release.yml` validates the version, tests, creates the tag
-locally, builds with GoReleaser (`--skip=publish`), and only after a green build
-pushes the tag and publishes via `softprops/action-gh-release`. A failed build
-leaves no tag on `origin` — that ordering is deliberate, keep it.
+The version is given **without** a leading `v` (`1.2.3`); the workflow strips one
+if present and owns the `v` prefix when creating the tag. Keep that normalisation
+in one place — the `version` step's outputs (`version`, `tag`) are what every
+later job consumes.
+
+`.github/workflows/release.yml` runs in three jobs:
+
+1. **build** (ubuntu) — validate the version, extract the matching CHANGELOG.md
+   section into `release-notes.md`, test, tag locally, build with GoReleaser
+   (`--skip=publish`), upload `dist/`.
+2. **windows-installer** (windows) — unpack the release zip per architecture, add
+   the PowerShell setup script and notes, compile with Inno Setup. The step falls
+   back to installing Inno Setup via Chocolatey if the runner image lacks it.
+3. **publish** (ubuntu) — merge checksums, push the tag, create the release with
+   `softprops/action-gh-release`.
+
+Every job checks out `ref: ${{ github.sha }}` so a push mid-release cannot make
+the jobs disagree about what is being built. The tag reaches `origin` only in the
+final job, after all artifacts exist — that ordering is deliberate, keep it.
 
 GoReleaser has `release.disable: true`: it builds into `./dist` and never talks
 to GitHub. The workflow uploads `dist/*` itself. Consequently the whole pipeline
