@@ -32,8 +32,11 @@ jobs:
       - name: go vet
         run: go vet ./...
 
+      # No -coverprofile: the Windows runner uses pwsh, which splits
+      # `-coverprofile=coverage.txt` and feeds `.txt` to go test as a package.
+      # Nothing consumed the profile anyway.
       - name: go test
-        run: go test -race -covermode=atomic -coverprofile=coverage.txt ./...
+        run: go test -race ./...
 
   lint:
     name: lint
