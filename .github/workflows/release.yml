@@ -78,20 +78,24 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
+          # Written outside the work tree: GoReleaser refuses to build when git
+          # is dirty, and an untracked file here would count as dirty.
+          notes="$RUNNER_TEMP/release-notes.md"
+
           awk -v ver="$VERSION" '
             /^## \[/ {
               if (found) exit
               if (index($0, "## [" ver "]") == 1) { found = 1; next }
             }
             found { print }
-          ' CHANGELOG.md > release-notes.md
+          ' CHANGELOG.md > "$notes"
 
-          if [[ ! -s release-notes.md ]] || ! grep -q '[^[:space:]]' release-notes.md; then
+          if [[ ! -s "$notes" ]] || ! grep -q '[^[:space:]]' "$notes"; then
             echo "::error::CHANGELOG.md has no entry for $VERSION. Add a '## [$VERSION] - <date>' section."
             exit 1
           fi
           echo "Release notes:"
-          cat release-notes.md
+          cat "$notes"
 
       - uses: actions/setup-go@v7
         with:
@@ -128,7 +132,7 @@ jobs:
                  dist/*.sbom.json dist/checksums.txt
           # Carry the notes alongside the artifacts so every path in the
           # uploaded artifact is rooted at dist/ and survives the round trip.
-          mv release-notes.md dist/
+          mv "$RUNNER_TEMP/release-notes.md" dist/
 
       - uses: actions/upload-artifact@v7
         with:
