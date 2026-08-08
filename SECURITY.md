@@ -65,8 +65,8 @@ Out of scope:
 
 ## A note on the binaries
 
-Released macOS and Windows binaries are **not** code-signed or notarized. The
-Homebrew cask therefore clears the macOS quarantine attribute on install, and
+Released macOS and Windows binaries are **not** code-signed or notarized. macOS
+quarantines them until you run `xattr -dr com.apple.quarantine ./gha-mcp`, and
 Windows SmartScreen may warn on first run. Verify downloads against the
 `checksums.txt` published with every release:
 

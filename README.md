@@ -43,42 +43,107 @@ such as Claude Code and Claude Desktop.
 - **`unknown`** — no releases found, or the repo does not exist. Some actions ship
   tags without GitHub releases.
 
+## Download
+
+Every release ships pre-built binaries — there is nothing to compile. Open the
+[**latest release**](https://github.com/pcpl2/github-actions-versions-mcp/releases/latest)
+and download the file matching your system:
+
+| System | Chip | File |
+|--------|------|------|
+| Linux | Intel / AMD | `gha-mcp_<version>_linux_amd64.tar.gz` |
+| Linux | ARM (Raspberry Pi, Ampere) | `gha-mcp_<version>_linux_arm64.tar.gz` |
+| macOS | Apple Silicon (M1–M4) | `gha-mcp_<version>_darwin_arm64.tar.gz` |
+| macOS | Intel | `gha-mcp_<version>_darwin_amd64.tar.gz` |
+| Windows | Intel / AMD | `gha-mcp_<version>_windows_amd64.zip` |
+| Windows | ARM | `gha-mcp_<version>_windows_arm64.zip` |
+
+Not sure which chip you have? On macOS run `uname -m` (`arm64` or `x86_64`); on
+Linux run `uname -m` (`aarch64` or `x86_64`); on Windows check
+Settings → System → About → System type.
+
+Debian, Fedora and Alpine users can skip the archive and install a system
+package instead — see [Linux packages](#linux-packages) below.
+
 ## Install
 
-### Homebrew (macOS / Linux)
+### Linux and macOS
 
 ```bash
-brew install pcpl2/tap/gha-mcp
+# 1. extract (adjust the filename to what you downloaded)
+tar -xzf gha-mcp_*_linux_amd64.tar.gz
+
+# 2. install onto your PATH
+sudo install -m 755 gha-mcp /usr/local/bin/gha-mcp
+
+# 3. check it works
+gha-mcp --version
 ```
 
-### Scoop (Windows)
+On macOS the binary is not code-signed, so Gatekeeper quarantines it. Clear that
+once, after installing:
+
+```bash
+xattr -dr com.apple.quarantine /usr/local/bin/gha-mcp
+```
+
+No root access? Extract anywhere and use the absolute path in your MCP client
+config — the server never needs to be on your `PATH`.
+
+### Windows
 
 ```powershell
-scoop bucket add pcpl2 https://github.com/pcpl2/scoop-bucket
-scoop install gha-mcp
+# 1. extract into a folder you control
+Expand-Archive .\gha-mcp_*_windows_amd64.zip -DestinationPath "$env:LOCALAPPDATA\Programs\gha-mcp"
+
+# 2. add that folder to your user PATH (new terminals pick it up)
+[Environment]::SetEnvironmentVariable(
+  "Path",
+  [Environment]::GetEnvironmentVariable("Path", "User") + ";$env:LOCALAPPDATA\Programs\gha-mcp",
+  "User")
+
+# 3. check it works (in a NEW terminal)
+gha-mcp --version
 ```
+
+The binary is unsigned, so SmartScreen may warn on first run — choose
+**More info → Run anyway**, or skip `PATH` entirely and point your MCP client at
+the full path to `gha-mcp.exe`.
 
 ### Linux packages
 
-Download the `.deb`, `.rpm` or `.apk` for your architecture from the
+Prefer your package manager? Download the `.deb`, `.rpm` or `.apk` for your
+architecture from the
 [latest release](https://github.com/pcpl2/github-actions-versions-mcp/releases/latest):
 
 ```bash
-sudo dpkg -i gha-mcp_*_linux_amd64.deb     # Debian / Ubuntu
-sudo rpm -i gha-mcp_*_linux_amd64.rpm      # Fedora / RHEL / openSUSE
+sudo dpkg -i gha-mcp_*_linux_amd64.deb                     # Debian / Ubuntu
+sudo rpm -i gha-mcp_*_linux_amd64.rpm                      # Fedora / RHEL / openSUSE
 sudo apk add --allow-untrusted gha-mcp_*_linux_amd64.apk   # Alpine
 ```
 
-### Pre-built archives
+These install `gha-mcp` to `/usr/bin`, already on your `PATH`.
 
-Grab a `tar.gz` (Linux/macOS) or `zip` (Windows) for `amd64` or `arm64` from the
-[releases page](https://github.com/pcpl2/github-actions-versions-mcp/releases/latest),
-extract it, and put `gha-mcp` on your `PATH`. Every release ships `checksums.txt`
-and a per-archive SBOM:
+### Verifying your download
+
+Every release includes `checksums.txt` and an SBOM per archive. Verifying is
+optional but takes a second — download `checksums.txt` into the same folder:
 
 ```bash
-sha256sum -c checksums.txt --ignore-missing
+sha256sum -c checksums.txt --ignore-missing        # Linux
+shasum -a 256 -c checksums.txt --ignore-missing    # macOS
 ```
+
+```powershell
+# Windows — compare the printed hash against the matching line in checksums.txt
+Get-FileHash .\gha-mcp_1.0.0_windows_amd64.zip -Algorithm SHA256
+```
+
+### Homebrew and Scoop
+
+Not available yet. Both are configured in
+[`.goreleaser.yaml`](.goreleaser.yaml) but disabled, because publishing to a tap
+or bucket needs a personal access token this project does not use today.
 
 ### From source
 
@@ -164,22 +229,32 @@ See [CLAUDE.md](CLAUDE.md) for the architecture notes and project conventions.
 
 ## Releasing
 
-Releases are cut by [GoReleaser](https://goreleaser.com) from a pushed tag:
+Releases are triggered **manually**, never by pushing a tag:
 
-```bash
-git tag -a v1.0.0 -m "v1.0.0"
-git push origin v1.0.0
-```
+**Actions → [Release](../../actions/workflows/release.yml) → Run workflow**, then
+fill in the version (`v1.2.3`) and hit the button.
 
-[`.github/workflows/release.yml`](.github/workflows/release.yml) then builds
-`linux`/`darwin`/`windows` × `amd64`/`arm64`, and publishes archives, Linux
-packages, checksums and SBOMs to the GitHub Release.
+The tag is a *result* of the run, not its trigger:
+[`.github/workflows/release.yml`](.github/workflows/release.yml) validates the
+version, runs the tests, creates the tag locally, builds
+`linux`/`darwin`/`windows` × `amd64`/`arm64` with
+[GoReleaser](https://goreleaser.com), and only then pushes the tag and publishes
+the GitHub Release via `softprops/action-gh-release`. A failed build leaves no
+tag on `origin`.
 
-Publishing the Homebrew cask and the Scoop manifest additionally requires two
-public repositories — `pcpl2/homebrew-tap` and `pcpl2/scoop-bucket` — and a
-`TAP_GITHUB_TOKEN` repository secret holding a PAT with `contents: write` on them.
-Without that secret those two steps are skipped and the rest of the release still
-publishes. Validate config changes locally with:
+| Input | Default | Effect |
+|-------|---------|--------|
+| `version` | — | The tag to create, e.g. `v1.2.3`. Rejected if malformed or already taken. |
+| `prerelease` | `false` | Marks the release as a pre-release. |
+| `draft` | `false` | Creates the release as a draft for you to publish by hand. |
+| `dry_run` | `false` | Builds and uploads the artifacts as a workflow artifact, without tagging or releasing. |
+
+Everything runs on the built-in `GITHUB_TOKEN` — no secrets to configure. Publishing
+the Homebrew cask and Scoop manifest is the one thing that would need a personal
+access token, which is why both are disabled in
+[`.goreleaser.yaml`](.goreleaser.yaml).
+
+Validate config changes locally before running the workflow:
 
 ```bash
 goreleaser check

@@ -87,10 +87,24 @@ so bumping the toolchain means editing `go.mod` only.
 
 ## Releasing
 
-Tag-driven. `git tag -a vX.Y.Z && git push origin vX.Y.Z` triggers
-`.github/workflows/release.yml`, which runs GoReleaser to publish archives,
-`.deb`/`.rpm`/`.apk` packages, SBOMs, checksums, and — when the optional
-`TAP_GITHUB_TOKEN` secret is present — the Homebrew cask and Scoop manifest.
+**Manual, never tag-driven.** Do not push a tag to cut a release — the tag is
+produced *by* the pipeline. A release is started from Actions → Release → Run
+workflow, with the version as an input.
+
+`.github/workflows/release.yml` validates the version, tests, creates the tag
+locally, builds with GoReleaser (`--skip=publish`), and only after a green build
+pushes the tag and publishes via `softprops/action-gh-release`. A failed build
+leaves no tag on `origin` — that ordering is deliberate, keep it.
+
+GoReleaser has `release.disable: true`: it builds into `./dist` and never talks
+to GitHub. The workflow uploads `dist/*` itself. Consequently the whole pipeline
+runs on the built-in `GITHUB_TOKEN`.
+
+`homebrew_casks` and `scoops` are configured but carry `skip_upload: true`,
+because publishing to a tap or bucket needs a PAT this project does not have.
+Enabling them means creating `pcpl2/homebrew-tap` / `pcpl2/scoop-bucket`, adding
+a `TAP_GITHUB_TOKEN` secret, and restoring the `token:` field — do not flip
+`skip_upload` on its own.
 
 The version string is injected via `-ldflags "-X main.version=..."`. Never
 hardcode a version in `main.go`.
