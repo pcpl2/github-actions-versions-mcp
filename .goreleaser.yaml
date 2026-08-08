@@ -13,6 +13,17 @@ before:
   hooks:
     - go mod tidy
     - go test ./...
+    # Windows file metadata (Details tab) and the exe icon. Writes
+    # resource_windows_*.syso next to main.go; the Go linker picks those up
+    # automatically for GOOS=windows and ignores them everywhere else.
+    - >-
+      go run github.com/josephspurrier/goversioninfo/cmd/goversioninfo@v1.7.0
+      -platform-specific
+      -ver-major {{ .Major }} -ver-minor {{ .Minor }} -ver-patch {{ .Patch }} -ver-build 0
+      -product-ver-major {{ .Major }} -product-ver-minor {{ .Minor }}
+      -product-ver-patch {{ .Patch }} -product-ver-build 0
+      -file-version "{{ .Version }}" -product-version "{{ .Version }}"
+      versioninfo.json
 
 builds:
   - id: gha-mcp

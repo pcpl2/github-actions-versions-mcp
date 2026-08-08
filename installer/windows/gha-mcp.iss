@@ -23,6 +23,16 @@
 #define AppName "gha-mcp"
 #define AppPublisher "Patryk Ławicki"
 #define AppURL "https://github.com/pcpl2/github-actions-versions-mcp"
+#define RepoRoot "..\.."
+
+; VersionInfoVersion only accepts numbers, so drop any pre-release suffix
+; (1.2.3-rc.1 -> 1.2.3) while AppVersion keeps the full string.
+#define DashPos Pos("-", AppVersion)
+#if DashPos > 0
+  #define BaseVersion Copy(AppVersion, 1, DashPos - 1)
+#else
+  #define BaseVersion AppVersion
+#endif
 
 [Setup]
 ; Keep this GUID stable — it is how Windows recognises an upgrade.
@@ -41,10 +51,25 @@ LicenseFile={#StageDir}\LICENSE
 InfoAfterFile={#StageDir}\INSTALL-NOTES.txt
 OutputDir={#OutputDir}
 OutputBaseFilename={#AppName}_{#AppVersion}_windows_{#Arch}_setup
-SetupIconFile=
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
+
+; Branding. Two sizes each so Setup can pick the sharper one per DPI.
+SetupIconFile={#RepoRoot}\assets\icon.ico
+WizardImageFile=wizard-large-240x459.png,wizard-large-480x918.png
+WizardSmallImageFile=wizard-small-147x147.png,wizard-small-294x294.png
+
+; Metadata shown on the setup executable's Properties > Details tab.
+VersionInfoVersion={#BaseVersion}
+VersionInfoProductVersion={#BaseVersion}
+VersionInfoCompany={#AppPublisher}
+VersionInfoProductName={#AppName}
+VersionInfoProductTextVersion={#AppVersion}
+VersionInfoDescription={#AppName} {#AppVersion} Setup
+VersionInfoTextVersion={#AppVersion}
+VersionInfoCopyright=Copyright (c) 2026 {#AppPublisher}. BSD 2-Clause licence.
+VersionInfoOriginalFileName={#AppName}_{#AppVersion}_windows_{#Arch}_setup.exe
 ; Per-user install: no UAC prompt, PATH changes land in HKCU.
 PrivilegesRequired=lowest
 ChangesEnvironment=yes

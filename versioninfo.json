@@ -1,0 +1,27 @@
+{
+  "//": "Windows VERSIONINFO resource for gha-mcp.exe, compiled into the binary by",
+  "//2": "goversioninfo (run from .goreleaser.yaml). Version fields are placeholders:",
+  "//3": "the release build overrides them with the tag via -ver-* / -file-version flags.",
+  "FixedFileInfo": {
+    "FileVersion": { "Major": 0, "Minor": 0, "Patch": 0, "Build": 0 },
+    "ProductVersion": { "Major": 0, "Minor": 0, "Patch": 0, "Build": 0 },
+    "FileFlagsMask": "3f",
+    "FileOS": "040004",
+    "FileType": "01",
+    "FileSubType": "00"
+  },
+  "StringFileInfo": {
+    "CompanyName": "Patryk Ławicki",
+    "FileDescription": "MCP server reporting the latest released versions of GitHub Actions",
+    "FileVersion": "0.0.0",
+    "InternalName": "gha-mcp",
+    "LegalCopyright": "Copyright (c) 2026 Patryk Ławicki. BSD 2-Clause licence.",
+    "OriginalFilename": "gha-mcp.exe",
+    "ProductName": "GitHub Actions Versions MCP",
+    "ProductVersion": "0.0.0"
+  },
+  "VarFileInfo": {
+    "Translation": { "LangID": "0409", "CharsetID": "04B0" }
+  },
+  "IconPath": "assets/icon.ico"
+}
