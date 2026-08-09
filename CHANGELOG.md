@@ -32,6 +32,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The Windows publisher is now `Pcpl2Lab`** instead of the author's name. It is
+  what appears in Add/Remove Programs and in the executable's file properties,
+  and it has to match the publisher of the WinGet package for `winget upgrade` to
+  recognise an installed copy. Copyright still names the author.
 - The release workflow takes a version **without** the leading `v` (`1.1.0`), and
   adds it when creating the tag, so tags stay SemVer-compatible.
 - The release run is titled with the version, so it is identifiable in the Actions

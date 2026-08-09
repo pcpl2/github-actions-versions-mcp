@@ -21,7 +21,11 @@
 #endif
 
 #define AppName "gha-mcp"
-#define AppPublisher "Patryk Ławicki"
+; Publisher is the brand shown in Add/Remove Programs — it must match the
+; Publisher field of the WinGet manifest, or `winget upgrade` fails to correlate
+; the installed program with the package. Copyright stays with the author.
+#define AppPublisher "Pcpl2Lab"
+#define AppAuthor "Patryk Ławicki"
 #define AppURL "https://github.com/pcpl2/github-actions-versions-mcp"
 #define RepoRoot "..\.."
 
@@ -68,7 +72,7 @@ VersionInfoProductName={#AppName}
 VersionInfoProductTextVersion={#AppVersion}
 VersionInfoDescription={#AppName} {#AppVersion} Setup
 VersionInfoTextVersion={#AppVersion}
-VersionInfoCopyright=Copyright (c) 2026 {#AppPublisher}. BSD 2-Clause licence.
+VersionInfoCopyright=Copyright (c) 2026 {#AppAuthor}. BSD 2-Clause licence.
 VersionInfoOriginalFileName={#AppName}_{#AppVersion}_windows_{#Arch}_setup.exe
 ; Per-user install: no UAC prompt, PATH changes land in HKCU.
 PrivilegesRequired=lowest

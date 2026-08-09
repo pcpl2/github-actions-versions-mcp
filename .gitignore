@@ -19,3 +19,6 @@ coverage.txt
 /.claude/settings.local.json
 /.idea/
 /.vscode/
+
+# Maintainer-only notes, deliberately kept out of the public repository
+/.local/

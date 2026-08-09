@@ -11,7 +11,7 @@
     "FileSubType": "00"
   },
   "StringFileInfo": {
-    "CompanyName": "Patryk Ławicki",
+    "CompanyName": "Pcpl2Lab",
     "FileDescription": "MCP server reporting the latest released versions of GitHub Actions",
     "FileVersion": "0.0.0",
     "InternalName": "gha-mcp",

@@ -71,7 +71,7 @@ nfpms:
     ids:
       - gha-mcp
     package_name: gha-mcp
-    vendor: pcpl2
+    vendor: Pcpl2Lab
     homepage: https://github.com/pcpl2/github-actions-versions-mcp
     maintainer: Patryk Ławicki <open-source@pcpl2.ovh>
     description: |-
